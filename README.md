@@ -320,6 +320,8 @@ The local provider can be configured without code changes through `PROJECTED_AGE
 
 Phase 9 adds a bounded `ToolRegistry` execution layer. Only registered Python callables are dispatchable, tool arguments are signature-checked, execution can be timed out, and every call is recorded with its result and elapsed time. Filesystem tools continue to resolve paths inside an explicit sandbox, reject overwrites, and require `confirmed=true` for deletion. Arbitrary model-generated shell text is not accepted.
 
+Phase 10 now includes `NetworkCameraSource`, a queue-backed desktop WebSocket receiver for the mobile client's binary JPEG messages at `/frames`. It can be exercised with `projected-camera --network --port 8765` and remains compatible with the existing synchronous `CameraSource` interface. The receiver bounds memory, drops old frames when vision is slow, ignores text messages, rejects invalid payloads, and reports receive/drop/decode state without storing camera frames. `DesktopInteractionPipeline` provides a deterministic hardware-free composition from calibrated fingertip observations through touch debounce, agent selection, and validated tool results.
+
 ## Team
 
 **Ethco Coder & Natnael Ermiyas**

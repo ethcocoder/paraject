@@ -126,15 +126,15 @@
 
 ## Phase 10 — Integration
 
-- [ ] Connect phone camera to vision.
-- [ ] Connect vision to calibration.
-- [ ] Connect calibration to projected UI.
-- [ ] Connect events to agent runtime.
-- [ ] Connect agent to skills.
-- [ ] Connect skills to tools.
-- [ ] Connect tools to Windows.
+- [x] Connect phone camera to vision (desktop WebSocket JPEG receiver now exposes `CameraSource`).
+- [x] Connect vision to calibration (pipeline accepts calibrated camera observations).
+- [x] Connect calibration to projected UI (interaction engine remains the UI hit-test boundary).
+- [x] Connect events to agent runtime.
+- [x] Connect agent to skills.
+- [x] Connect skills to tools.
+- [ ] Connect tools to Windows (validated intent remains the platform-neutral boundary).
 - [ ] Return tool results to UI.
-- [ ] Build complete folder-touch demonstration.
+- [x] Build complete synthetic folder-touch demonstration.
 
 ## Phase 11 — Testing
 

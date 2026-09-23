@@ -13,6 +13,7 @@ dependencies = []
 display = ["screeninfo>=0.8.1"]
 camera = ["opencv-python>=4.8"]
 discovery = ["zeroconf>=0.136"]
+network = ["websockets>=12.0"]
 vision = ["mediapipe>=0.10"]
 test = ["pytest>=7.0"]
 

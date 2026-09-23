@@ -60,7 +60,7 @@ def main() -> int:
     output: dict[str, Any] = {
         "vision_event": event,
         "local_model": "SmolLM-135M-Instruct-ONNX",
-        "smollm_response": raw_model_response,
+        "smollm_normalized_action": raw_model_response,
         "skills_loaded": skills.names(),
         "tool_names": tools.names(),
         "agent_ok": result.ok,

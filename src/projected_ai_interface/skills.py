@@ -94,6 +94,8 @@ class ToolRegistry:
     def register(self, name: str, function: Callable[..., Any]) -> None:
         if not name or not callable(function):
             raise ValueError("tools require a name and callable")
+        if name in self._tools:
+            raise ValueError(f"tool already registered: {name}")
         self._tools[name] = function
 
     def names(self) -> tuple[str, ...]:
@@ -130,8 +132,8 @@ class ToolRegistry:
             return self._record(name, arguments, ToolResult(True, result=value), started)
         except FutureTimeoutError:
             return self._record(name, arguments, ToolResult(False, error=f"tool timed out after {timeout:g}s", code="timeout"), started)
-        except (TypeError, ValueError, FileNotFoundError, PermissionError, OSError) as exc:
-            return self._record(name, arguments, ToolResult(False, error=str(exc), code=type(exc).__name__), started)
+        except Exception as exc:
+            return self._record(name, arguments, ToolResult(False, error=str(exc) or exc.__class__.__name__, code=type(exc).__name__), started)
 
     def _record(self, name: str, arguments: dict[str, Any], result: ToolResult, started: float) -> ToolResult:
         self.execution_log.append(ToolExecution(name, dict(arguments), result.ok, result.error, (time.perf_counter() - started) * 1000))

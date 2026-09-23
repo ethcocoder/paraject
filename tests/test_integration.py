@@ -1,6 +1,7 @@
 import asyncio
 
 from projected_ai_interface.agent import AgentRuntime
+from projected_ai_interface.builtin_tools import PathSandbox, open_folder
 from projected_ai_interface.calibration import CalibrationProfile
 from projected_ai_interface.camera import NetworkCameraSource
 from projected_ai_interface.interaction import InteractionEngine, UIObject
@@ -40,6 +41,35 @@ def test_synthetic_folder_touch_flow_reaches_safe_tool(tmp_path):
     assert results[1].agent_result is not None
     assert results[1].agent_result.ok
     assert results[1].feedback == "success"
+
+
+def test_pipeline_executes_production_open_folder_tool_end_to_end(tmp_path):
+    target = tmp_path / "Documents"
+    target.mkdir()
+    calibration = CalibrationProfile.from_points(
+        (100, 100), (100, 100),
+        [(0, 0), (100, 0), (100, 100), (0, 100)],
+        [(0, 0), (100, 0), (100, 100), (0, 100)],
+    )
+    interaction = InteractionEngine(calibration, [UIObject(str(target), "folder", 20, 20, 40, 40)], debounce_frames=2)
+    skills = SkillRegistry(); skills.load_directory("skills")
+    tools = ToolRegistry()
+    sandbox = PathSandbox([tmp_path])
+    tools.register("open_folder", lambda path: open_folder(path, sandbox))
+
+    class FencedProvider:
+        def complete(self, messages, tools):
+            return '```json\n{"tool": "open_folder", "arguments": {"path": "' + str(target) + '"}}\n```'
+
+    pipeline = DesktopInteractionPipeline(interaction, AgentRuntime(FencedProvider(), skills, tools, max_retries=0))
+    results = pipeline.process_observations([
+        {"camera_point": (30, 30), "confidence": 0.95, "contact": "touch", "timestamp": 1.0},
+        {"camera_point": (30, 30), "confidence": 0.95, "contact": "touch", "timestamp": 1.1},
+    ])
+    result = results[-1]
+    assert result.agent_result is not None and result.agent_result.ok
+    assert result.agent_result.tool_result.result["validated"] is True
+    assert result.agent_result.tool_result.result["path"] == str(target.resolve())
 
 
 def test_network_receiver_rejects_non_binary_and_bounds_queue():

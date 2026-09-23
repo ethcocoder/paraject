@@ -31,6 +31,8 @@ class AgentConfig:
     timeout_seconds: float = 30.0
     max_retries: int = 1
     onnx_model: str | None = None
+    onnx_tokenizer: str | None = None
+    onnx_max_new_tokens: int = 64
     onnx_labels: tuple[str, ...] = ("null", "open_folder", "list_folder")
 
     @classmethod
@@ -57,6 +59,8 @@ class AgentConfig:
             timeout_seconds=positive_float("PROJECTED_AGENT_TIMEOUT", cls.timeout_seconds),
             max_retries=nonnegative_int("PROJECTED_AGENT_RETRIES", cls.max_retries),
             onnx_model=os.getenv("PROJECTED_AGENT_ONNX_MODEL") or None,
+            onnx_tokenizer=os.getenv("PROJECTED_AGENT_ONNX_TOKENIZER") or None,
+            onnx_max_new_tokens=nonnegative_int("PROJECTED_AGENT_ONNX_MAX_NEW_TOKENS", cls.onnx_max_new_tokens) or cls.onnx_max_new_tokens,
             onnx_labels=tuple(filter(None, os.getenv("PROJECTED_AGENT_ONNX_LABELS", ",".join(cls.onnx_labels)).split(","))),
         )
 
@@ -185,10 +189,105 @@ class OnnxActionProvider:
         return {"tool": None if label == "null" else label, "arguments": {}}
 
 
+class SmolLMCausalProvider:
+    """Generate structured actions from a causal ONNX language model.
+
+    This adapter targets the exported SmolLM graph used by
+    ``scripts/verify_smollm_onnx.py``: an initial prompt pass followed by
+    greedy one-token KV-cache decoding.  It deliberately returns generated
+    text to let ``AgentRuntime`` apply the same strict action validation used
+    by every other provider.
+    """
+
+    def __init__(self, model_path: str, tokenizer_path: str, *, max_new_tokens: int = 64) -> None:
+        if not model_path or not tokenizer_path:
+            raise ValueError("model_path and tokenizer_path are required")
+        if max_new_tokens < 1:
+            raise ValueError("max_new_tokens must be positive")
+        try:
+            import numpy as np
+            import onnxruntime as ort
+            from tokenizers import Tokenizer
+        except ImportError as exc:
+            raise RuntimeError("SmolLMCausalProvider requires onnxruntime, numpy, and tokenizers; install with `pip install -e '.[onnx]'`") from exc
+        self._np = np
+        self.tokenizer = Tokenizer.from_file(tokenizer_path)
+        try:
+            self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        except Exception as exc:
+            raise RuntimeError(f"unable to load causal ONNX model: {exc}") from exc
+        self.max_new_tokens = max_new_tokens
+        self._inputs = {spec.name: spec for spec in self.session.get_inputs()}
+        self._outputs = {spec.name: spec for spec in self.session.get_outputs()}
+        self._past_names = sorted(name for name in self._inputs if name.startswith("past_key_values."))
+        if not {"input_ids", "attention_mask", "position_ids"}.issubset(self._inputs):
+            raise RuntimeError("causal ONNX model must expose input_ids, attention_mask, and position_ids")
+        if not self._past_names or not all("present." + name[len("past_key_values."):] in self._outputs for name in self._past_names):
+            raise RuntimeError("causal ONNX model has an incomplete KV-cache graph contract")
+        self._eos_id = next((self.tokenizer.token_to_id(token) for token in ("<|im_end|>", "</s>", "<eos>") if self.tokenizer.token_to_id(token) is not None), 2)
+
+    @classmethod
+    def from_config(cls, config: AgentConfig) -> "SmolLMCausalProvider":
+        if not config.onnx_model:
+            raise ValueError("PROJECTED_AGENT_ONNX_MODEL is required for the causal ONNX backend")
+        if not config.onnx_tokenizer:
+            raise ValueError("PROJECTED_AGENT_ONNX_TOKENIZER is required for the causal ONNX backend")
+        return cls(config.onnx_model, config.onnx_tokenizer, max_new_tokens=config.onnx_max_new_tokens)
+
+    @staticmethod
+    def _prompt(messages: list[dict[str, str]]) -> str:
+        return "".join(
+            f"<|im_start|>{message['role']}\n{message.get('content', '')}<|im_end|>\n"
+            for message in messages
+        ) + "<|im_start|>assistant\n"
+
+    def complete(self, messages: list[dict[str, str]], tools: list[dict[str, Any]]) -> str:
+        del tools  # The tool contract is already included in the runtime's user prompt.
+        encoded = self.tokenizer.encode(self._prompt(messages), add_special_tokens=False)
+        token_ids = encoded.ids
+        if not token_ids:
+            raise RuntimeError("causal ONNX tokenizer produced an empty prompt")
+        generated = list(token_ids)
+        feeds: dict[str, Any] = {
+            "input_ids": self._np.asarray([token_ids], dtype=self._np.int64),
+            "attention_mask": self._np.ones((1, len(token_ids)), dtype=self._np.int64),
+            "position_ids": self._np.arange(len(token_ids), dtype=self._np.int64)[None, :],
+        }
+        for name in self._past_names:
+            shape = self._inputs[name].shape
+            try:
+                heads, head_dim = int(shape[1]), int(shape[3])
+            except (IndexError, TypeError, ValueError) as exc:
+                raise RuntimeError(f"unsupported KV-cache input shape for {name}: {shape}") from exc
+            feeds[name] = self._np.zeros((1, heads, 0, head_dim), dtype=self._np.float32)
+
+        output_specs = list(self.session.get_outputs())
+        by_name = dict(zip((spec.name for spec in output_specs), self.session.run(None, feeds)))
+        for _ in range(self.max_new_tokens):
+            if "logits" not in by_name:
+                raise RuntimeError("causal ONNX model returned no logits output")
+            next_id = int(self._np.argmax(by_name["logits"][0, -1]))
+            generated.append(next_id)
+            if next_id == self._eos_id:
+                break
+            total_length = len(generated)
+            feeds = {
+                "input_ids": self._np.asarray([[next_id]], dtype=self._np.int64),
+                "attention_mask": self._np.ones((1, total_length), dtype=self._np.int64),
+                "position_ids": self._np.asarray([[total_length - 1]], dtype=self._np.int64),
+            }
+            for name in self._past_names:
+                feeds[name] = by_name["present." + name[len("past_key_values."):]]
+            by_name = dict(zip((spec.name for spec in output_specs), self.session.run(None, feeds)))
+        return self.tokenizer.decode(generated[len(token_ids):], skip_special_tokens=True).strip()
+
+
 def provider_from_config(config: AgentConfig, *, vocabulary: dict[str, int] | None = None) -> AgentProvider:
     """Construct the configured standalone or server-backed provider."""
     if config.backend == "onnx":
         return OnnxActionProvider.from_config(config, vocabulary=vocabulary)
+    if config.backend in {"smollm", "onnx-causal", "onnx-smollm"}:
+        return SmolLMCausalProvider.from_config(config)
     if config.backend in {"openai", "openai-compatible", "ollama"}:
         return OpenAICompatibleProvider.from_config(config)
     raise ValueError(f"unsupported agent backend: {config.backend}")
@@ -202,18 +301,32 @@ class AgentRuntime:
         tools: ToolRegistry,
         *,
         max_retries: int = 1,
+        max_request_chars: int = 4096,
+        max_event_chars: int = 8192,
     ) -> None:
+        if max_request_chars < 1 or max_event_chars < 1:
+            raise ValueError("runtime input limits must be positive")
         self.provider, self.skills, self.tools = provider, skills, tools
         self.max_retries = max(0, max_retries)
+        self.max_request_chars, self.max_event_chars = max_request_chars, max_event_chars
 
     def build_messages(self, request: str, event: dict[str, Any] | None = None) -> list[dict[str, str]]:
+        if not isinstance(request, str) or not request.strip():
+            raise ValueError("agent request must be a non-empty string")
+        if len(request) > self.max_request_chars:
+            raise ValueError(f"agent request exceeds {self.max_request_chars} characters")
+        if event is not None and not isinstance(event, dict):
+            raise ValueError("agent event must be an object")
+        event_json = json.dumps(event or {}, sort_keys=True)
+        if len(event_json) > self.max_event_chars:
+            raise ValueError(f"agent event exceeds {self.max_event_chars} characters")
         skill_context = "\n\n".join(
             f"SKILL {skill.name}\nPurpose: {skill.purpose}\nInputs: {skill.inputs}\nSafety: {skill.safety}\nTool: {skill.tool}"
             for name in self.skills.names()
             for skill in [self.skills.get(name)]
             if skill.tool in self.tools.names()
         )
-        user = f"Request: {request}\nEvent: {json.dumps(event or {}, sort_keys=True)}\nAvailable skills:\n{skill_context}"
+        user = f"Request: {request}\nEvent: {event_json}\nAvailable skills:\n{skill_context}"
         return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
 
     def tool_schemas(self) -> list[dict[str, Any]]:
@@ -235,24 +348,34 @@ class AgentRuntime:
 
     def run(self, request: str, event: dict[str, Any] | None = None) -> AgentResult:
         started = time.perf_counter()
-        messages = self.build_messages(request, event)
+        try:
+            messages = self.build_messages(request, event)
+        except ValueError as exc:
+            return self._result(False, None, None, str(exc), started, 0, "invalid_input")
         last_error = "agent did not return a valid action"
         attempts = 0
         for attempt in range(self.max_retries + 1):
             attempts = attempt + 1
             try:
                 response = self.provider.complete(messages, self.tool_schemas())
+            except Exception as exc:
+                last_error = str(exc) or exc.__class__.__name__
+                if attempt < self.max_retries:
+                    messages.append({"role": "user", "content": "The provider failed. Retry once and return only a strict JSON action."})
+                    continue
+                return self._result(False, None, None, last_error, started, attempts, "provider_error")
+            try:
                 action = self._parse_action(response)
                 self._validate_action(action)
                 if action.tool is None:
                     return self._result(True, action, None, None, started, attempts, "noop")
                 result = self.tools.call(action.tool, action.arguments)
                 return self._result(result.ok, action, result, result.error, started, attempts, "success" if result.ok else "tool_error")
-            except (ValueError, KeyError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
+            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
                 last_error = str(exc)
                 if attempt < self.max_retries:
                     messages.append({"role": "user", "content": "Invalid or unavailable response. Return only a strict JSON object with exactly tool and arguments, using a documented registered tool or null."})
-        return self._result(False, None, None, last_error, started, attempts, "provider_error" if "model" in last_error or "local" in last_error else "invalid_output")
+        return self._result(False, None, None, last_error, started, attempts, "invalid_output")
 
     @staticmethod
     def _result(ok: bool, action: AgentAction | None, tool_result: ToolResult | None, error: str | None, started: float, attempts: int, status: str) -> AgentResult:
@@ -271,9 +394,9 @@ class AgentRuntime:
                 function = calls[0].get("function", {})
                 data = {"tool": function.get("name"), "arguments": json.loads(function.get("arguments", "{}"))}
             else:
-                data = json.loads(message.get("content") or "{}")
+                data = AgentRuntime._parse_json_text(message.get("content") or "{}")
         elif isinstance(response, str):
-            data = json.loads(response)
+            data = AgentRuntime._parse_json_text(response)
         if not isinstance(data, dict) or set(data) - {"tool", "arguments"} or "tool" not in data or "arguments" not in data:
             raise ValueError("agent response must contain exactly tool and arguments")
         if not isinstance(data["arguments"], dict):
@@ -282,6 +405,19 @@ class AgentRuntime:
         if tool is not None and (not isinstance(tool, str) or not tool.strip()):
             raise ValueError("tool must be a non-empty string or null")
         return AgentAction(tool, data["arguments"])
+
+    @staticmethod
+    def _parse_json_text(text: str) -> Any:
+        """Parse JSON while accepting a single Markdown code fence."""
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
+        return json.loads(cleaned)
 
     def _validate_action(self, action: AgentAction) -> None:
         if action.tool is None:

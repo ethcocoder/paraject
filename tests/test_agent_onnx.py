@@ -2,7 +2,7 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper
 
-from projected_ai_interface.agent import AgentConfig, OnnxActionProvider, provider_from_config
+from projected_ai_interface.agent import AgentConfig, OnnxActionProvider, SmolLMCausalProvider, provider_from_config
 
 
 def write_tiny_action_model(path):
@@ -35,3 +35,17 @@ def test_onnx_provider_can_be_selected_from_config(tmp_path):
     config = AgentConfig(backend="onnx", onnx_model=str(model_path))
     provider = provider_from_config(config)
     assert isinstance(provider, OnnxActionProvider)
+
+
+def test_causal_provider_requires_tokenizer_configuration():
+    config = AgentConfig(backend="smollm", onnx_model="model.onnx")
+    try:
+        provider_from_config(config)
+    except ValueError as exc:
+        assert "TOKENIZER" in str(exc)
+    else:
+        raise AssertionError("causal provider accepted missing tokenizer")
+
+
+def test_causal_backend_is_named_provider():
+    assert SmolLMCausalProvider.__name__ == "SmolLMCausalProvider"

@@ -62,6 +62,28 @@ def test_tool_registry_timeout_is_structured():
     assert result.code == "timeout"
 
 
+def test_tool_registry_contains_unexpected_exception():
+    tools = ToolRegistry()
+    def broken():
+        raise RuntimeError("boom")
+    tools.register("broken", broken)
+    result = tools.call("broken", {})
+    assert not result.ok
+    assert result.code == "RuntimeError"
+    assert result.error == "boom"
+
+
+def test_tool_registry_rejects_duplicate_registration():
+    tools = ToolRegistry()
+    tools.register("echo", lambda: "first")
+    try:
+        tools.register("echo", lambda: "second")
+    except ValueError as exc:
+        assert "already registered" in str(exc)
+    else:
+        raise AssertionError("duplicate tool registration was accepted")
+
+
 def test_config_reads_environment(monkeypatch):
     monkeypatch.setenv("PROJECTED_AGENT_BASE_URL", "http://localhost:9000/v1")
     monkeypatch.setenv("PROJECTED_AGENT_MODEL", "local-model")

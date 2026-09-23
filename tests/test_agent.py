@@ -57,3 +57,28 @@ def test_openai_style_tool_call_is_parsed(tmp_path):
     result = runtime(provider, tmp_path).run('Open folder')
     assert result.ok
     assert result.action.tool == 'open_folder'
+
+
+def test_agent_accepts_markdown_fenced_json_action(tmp_path):
+    response = '```json\n' + json.dumps({'tool': 'open_folder', 'arguments': {'path': str(tmp_path)}}) + '\n```'
+    result = runtime(FakeProvider([response]), tmp_path).run('Open folder')
+    assert result.ok
+    assert result.action.tool == 'open_folder'
+
+
+def test_agent_returns_structured_invalid_input_result(tmp_path):
+    result = runtime(FakeProvider([]), tmp_path).run('')
+    assert not result.ok
+    assert result.status == 'invalid_input'
+    assert result.attempts == 0
+
+
+def test_agent_contains_unexpected_provider_exception(tmp_path):
+    class BrokenProvider:
+        def complete(self, messages, tools):
+            raise OSError('model process crashed')
+
+    result = runtime(BrokenProvider(), tmp_path, retries=0).run('Open folder')
+    assert not result.ok
+    assert result.status == 'provider_error'
+    assert 'crashed' in result.error

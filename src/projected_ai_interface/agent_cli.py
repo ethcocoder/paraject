@@ -10,10 +10,12 @@ from .skills import SkillRegistry, ToolRegistry
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Inspect the Phase 8 agent contract")
     parser.add_argument("--root", default="skills")
-    parser.add_argument("--backend", choices=("onnx", "openai-compatible"), help="inference backend")
+    parser.add_argument("--backend", choices=("onnx", "smollm", "onnx-causal", "openai-compatible"), help="inference backend")
     parser.add_argument("--base-url", help="OpenAI-compatible provider base URL")
     parser.add_argument("--model", help="Local model name")
     parser.add_argument("--onnx-model", help="path to a local ONNX action model")
+    parser.add_argument("--onnx-tokenizer", help="path to tokenizer.json for a causal ONNX model")
+    parser.add_argument("--onnx-max-new-tokens", type=int, help="maximum generated tokens for a causal ONNX model")
     parser.add_argument("--timeout", type=float, help="Provider timeout in seconds")
     parser.add_argument("--retries", type=int, help="Maximum malformed/provider retries")
     args = parser.parse_args(argv)
@@ -27,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
         timeout_seconds=args.timeout if args.timeout is not None else defaults.timeout_seconds,
         max_retries=args.retries if args.retries is not None else defaults.max_retries,
         onnx_model=args.onnx_model or defaults.onnx_model,
+        onnx_tokenizer=args.onnx_tokenizer or defaults.onnx_tokenizer,
+        onnx_max_new_tokens=args.onnx_max_new_tokens if args.onnx_max_new_tokens is not None else defaults.onnx_max_new_tokens,
         onnx_labels=defaults.onnx_labels,
     )
     skills = SkillRegistry()
@@ -38,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
             "base_url": config.base_url,
             "model": config.model,
             "onnx_model": config.onnx_model,
+            "onnx_tokenizer": config.onnx_tokenizer,
+            "onnx_max_new_tokens": config.onnx_max_new_tokens,
             "timeout_seconds": config.timeout_seconds,
             "max_retries": config.max_retries,
             "api_key_configured": bool(config.api_key),

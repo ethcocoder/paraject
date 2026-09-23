@@ -14,7 +14,7 @@ display = ["screeninfo>=0.8.1"]
 camera = ["opencv-python>=4.8"]
 discovery = ["zeroconf>=0.136"]
 network = ["websockets>=12.0"]
-onnx = ["numpy>=1.24", "onnx>=1.16", "onnxruntime>=1.18"]
+onnx = ["numpy>=1.24", "onnx>=1.16", "onnxruntime>=1.18", "tokenizers>=0.20"]
 vision = ["mediapipe>=0.10"]
 test = ["pytest>=7.0"]
 

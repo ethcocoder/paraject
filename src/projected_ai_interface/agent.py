@@ -24,11 +24,14 @@ SYSTEM_PROMPT = """You are the Projected AI Interface local agent. Choose exactl
 class AgentConfig:
     """Runtime configuration, overridable with environment variables."""
 
+    backend: str = "onnx"
     base_url: str = "http://127.0.0.1:11434/v1"
     model: str = "tinyllama"
     api_key: str = "local"
     timeout_seconds: float = 30.0
     max_retries: int = 1
+    onnx_model: str | None = None
+    onnx_labels: tuple[str, ...] = ("null", "open_folder", "list_folder")
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -47,11 +50,14 @@ class AgentConfig:
                 return default
 
         return cls(
+            backend=os.getenv("PROJECTED_AGENT_BACKEND", cls.backend).lower(),
             base_url=os.getenv("PROJECTED_AGENT_BASE_URL", cls.base_url),
             model=os.getenv("PROJECTED_AGENT_MODEL", cls.model),
             api_key=os.getenv("PROJECTED_AGENT_API_KEY", cls.api_key),
             timeout_seconds=positive_float("PROJECTED_AGENT_TIMEOUT", cls.timeout_seconds),
             max_retries=nonnegative_int("PROJECTED_AGENT_RETRIES", cls.max_retries),
+            onnx_model=os.getenv("PROJECTED_AGENT_ONNX_MODEL") or None,
+            onnx_labels=tuple(filter(None, os.getenv("PROJECTED_AGENT_ONNX_LABELS", ",".join(cls.onnx_labels)).split(","))),
         )
 
 
@@ -117,6 +123,75 @@ class OpenAICompatibleProvider:
             raise RuntimeError(f"local model unavailable: {exc.reason}") from exc
         except TimeoutError as exc:
             raise RuntimeError("local model request timed out") from exc
+
+
+class OnnxActionProvider:
+    """Run a small local ONNX action classifier without a model server.
+
+    The model is expected to accept an ``input_ids`` int64 tensor shaped
+    ``[1, sequence]`` and return logits shaped ``[1, label_count]``. This is a
+    deliberately narrow adapter for tiny local classifiers: tokenization is a
+    deterministic vocabulary lookup and the result is converted into the same
+    strict structured action consumed by ``AgentRuntime``. A full language model
+    can use the same provider boundary once its tokenizer/output contract is
+    supplied.
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        vocabulary: dict[str, int] | None = None,
+        labels: tuple[str, ...] = ("null", "open_folder", "list_folder"),
+        max_tokens: int = 64,
+    ) -> None:
+        if not model_path:
+            raise ValueError("model_path is required")
+        if not labels or max_tokens < 1:
+            raise ValueError("labels and max_tokens are required")
+        try:
+            import numpy as np
+            import onnxruntime as ort
+        except ImportError as exc:
+            raise RuntimeError("OnnxActionProvider requires onnxruntime and numpy; install with `pip install -e '.[onnx]'`") from exc
+        self._np = np
+        self.labels = labels
+        self.vocabulary = {word.lower(): int(index) for word, index in (vocabulary or {}).items()}
+        self.max_tokens = max_tokens
+        try:
+            self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        except Exception as exc:
+            raise RuntimeError(f"unable to load ONNX model: {exc}") from exc
+
+    @classmethod
+    def from_config(cls, config: AgentConfig, *, vocabulary: dict[str, int] | None = None) -> "OnnxActionProvider":
+        if not config.onnx_model:
+            raise ValueError("PROJECTED_AGENT_ONNX_MODEL is required for the ONNX backend")
+        return cls(config.onnx_model, vocabulary=vocabulary, labels=config.onnx_labels)
+
+    def complete(self, messages: list[dict[str, str]], tools: list[dict[str, Any]]) -> dict[str, Any]:
+        request = messages[-1].get("content", "") if messages else ""
+        ids = [self.vocabulary.get(token, 0) for token in request.lower().split()[: self.max_tokens]]
+        ids.extend([0] * (self.max_tokens - len(ids)))
+        input_ids = self._np.asarray([ids], dtype=self._np.int64)
+        input_name = self.session.get_inputs()[0].name
+        outputs = self.session.run(None, {input_name: input_ids})
+        if not outputs:
+            raise RuntimeError("ONNX model returned no outputs")
+        logits = self._np.asarray(outputs[0])
+        if logits.ndim != 2 or logits.shape[0] != 1 or logits.shape[1] != len(self.labels):
+            raise ValueError("ONNX action model must return [1, label_count] logits")
+        label = self.labels[int(self._np.argmax(logits[0]))]
+        return {"tool": None if label == "null" else label, "arguments": {}}
+
+
+def provider_from_config(config: AgentConfig, *, vocabulary: dict[str, int] | None = None) -> AgentProvider:
+    """Construct the configured standalone or server-backed provider."""
+    if config.backend == "onnx":
+        return OnnxActionProvider.from_config(config, vocabulary=vocabulary)
+    if config.backend in {"openai", "openai-compatible", "ollama"}:
+        return OpenAICompatibleProvider.from_config(config)
+    raise ValueError(f"unsupported agent backend: {config.backend}")
 
 
 class AgentRuntime:

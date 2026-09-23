@@ -10,27 +10,34 @@ from .skills import SkillRegistry, ToolRegistry
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Inspect the Phase 8 agent contract")
     parser.add_argument("--root", default="skills")
+    parser.add_argument("--backend", choices=("onnx", "openai-compatible"), help="inference backend")
     parser.add_argument("--base-url", help="OpenAI-compatible provider base URL")
     parser.add_argument("--model", help="Local model name")
+    parser.add_argument("--onnx-model", help="path to a local ONNX action model")
     parser.add_argument("--timeout", type=float, help="Provider timeout in seconds")
     parser.add_argument("--retries", type=int, help="Maximum malformed/provider retries")
     args = parser.parse_args(argv)
 
     defaults = AgentConfig.from_env()
     config = AgentConfig(
+        backend=args.backend or defaults.backend,
         base_url=args.base_url or defaults.base_url,
         model=args.model or defaults.model,
         api_key=defaults.api_key,
         timeout_seconds=args.timeout if args.timeout is not None else defaults.timeout_seconds,
         max_retries=args.retries if args.retries is not None else defaults.max_retries,
+        onnx_model=args.onnx_model or defaults.onnx_model,
+        onnx_labels=defaults.onnx_labels,
     )
     skills = SkillRegistry()
     skills.load_directory(args.root)
     tools = ToolRegistry()
     print(json.dumps({
         "provider": {
+            "backend": config.backend,
             "base_url": config.base_url,
             "model": config.model,
+            "onnx_model": config.onnx_model,
             "timeout_seconds": config.timeout_seconds,
             "max_retries": config.max_retries,
             "api_key_configured": bool(config.api_key),

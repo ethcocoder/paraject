@@ -100,8 +100,8 @@
 
 ## Phase 8 — LLM
 
-- [x] Select initial existing small LLM: OpenAI-compatible TinyLlama-class endpoint.
-- [!] Run model locally (live endpoint unavailable in this environment; fake-provider coverage retained).
+- [x] Select initial local inference path: standalone ONNX Runtime action model.
+- [x] Run a tiny ONNX model locally with CPU inference.
 - [x] Define system prompt.
 - [x] Define structured tool-call format.
 - [x] Feed structured interaction events to model.

@@ -209,6 +209,7 @@ The exact libraries are intentionally left replaceable during the prototype stag
 - [`todo.md`](todo.md) — task checklist.
 - [`roadmap.md`](roadmap.md) — project milestones and long-term direction.
 - [`PRODUCTION.md`](PRODUCTION.md) — release gate, deployment controls, and operational limitations.
+- [`V2_PACKAGING.md`](V2_PACKAGING.md) — Electron desktop bundling, mobile pairing, and no-download model delivery.
 
 ## First Prototype
 

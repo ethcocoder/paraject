@@ -12,3 +12,12 @@ mobile-camera/android/.gradle/
 mobile-camera/android/build/
 mobile-camera/android/app/build/
 mobile-camera/android/capacitor-cordova-android-plugins/build/
+.venv-packaging/
+.models/
+demo_sandbox/
+demo_person_clicking_folder_*.png
+packaging/backend-dist/
+packaging/build/
+desktop-electron/node_modules/
+desktop-electron/dist/
+desktop-electron/release/

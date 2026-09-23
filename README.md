@@ -314,6 +314,8 @@ Phase 6 adds the deterministic interaction engine. It maps camera points through
 
 Phase 7 adds the documented skill system. Each capability is defined by a `skills/**/SKILL.md` file and connected only to an explicitly registered Python tool. Run `projected-skills` to inspect the loaded registry. Skills now cover opening/listing folders, creating folders, searching files, moving/copying files, and validating an allowlisted application intent. Delete is confirmation-gated, paths are sandbox-checked, existing destinations are never overwritten, and arbitrary LLM shell text is not accepted or executed.
 
+Phase 8 adds the local-agent contract in `src/projected_ai_interface/agent.py`. The default adapter targets an OpenAI-compatible local endpoint such as Ollama at `http://127.0.0.1:11434/v1` with a TinyLlama-class model. It loads `SKILL.md` context, receives structured interaction events, validates only documented and registered tools, retries malformed responses, and records inference latency. Run `projected-agent` to inspect the generated skill/tool contract. A model is never required for the deterministic test suite.
+
 ## Team
 
 **Ethco Coder & Natnael Ermiyas**

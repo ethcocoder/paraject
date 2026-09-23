@@ -100,16 +100,16 @@
 
 ## Phase 8 — LLM
 
-- [ ] Select initial existing small LLM.
+- [x] Select initial existing small LLM: OpenAI-compatible TinyLlama-class endpoint.
 - [ ] Run model locally.
-- [ ] Define system prompt.
-- [ ] Define structured tool-call format.
-- [ ] Feed structured interaction events to model.
-- [ ] Load relevant `SKILL.md` content.
-- [ ] Validate model output.
-- [ ] Add retry behavior.
-- [ ] Measure inference latency.
-- [ ] Test model with simple commands.
+- [x] Define system prompt.
+- [x] Define structured tool-call format.
+- [x] Feed structured interaction events to model.
+- [x] Load relevant `SKILL.md` content.
+- [x] Validate model output.
+- [x] Add retry behavior.
+- [x] Measure inference latency.
+- [x] Test model with simple commands.
 - [ ] Test model with ambiguous commands.
 
 ## Phase 9 — Tool Safety

@@ -24,6 +24,7 @@ projected-vision = "projected_ai_interface.vision_cli:main"
 projected-calibration = "projected_ai_interface.calibration_cli:main"
 projected-interaction = "projected_ai_interface.interaction_cli:main"
 projected-skills = "projected_ai_interface.skills_cli:main"
+projected-agent = "projected_ai_interface.agent_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

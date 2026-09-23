@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Projected AI Camera</string>
+    <string name="title_activity_main">Projected AI Camera</string>
+    <string name="package_name">com.projectedai.camera</string>
+    <string name="custom_url_scheme">com.projectedai.camera</string>
+</resources>

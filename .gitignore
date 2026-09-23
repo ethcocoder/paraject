@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+.calibration/
+mobile-camera/node_modules/
+mobile-camera/dist/
+mobile-camera/android/.gradle/
+mobile-camera/android/build/
+mobile-camera/android/app/build/
+mobile-camera/android/capacitor-cordova-android-plugins/build/

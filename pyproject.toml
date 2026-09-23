@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "projected-ai-interface"
+version = "0.1.0"
+description = "Phase 1 projected UI and Phase 2 camera prototype"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+display = ["screeninfo>=0.8.1"]
+camera = ["opencv-python>=4.8"]
+discovery = ["zeroconf>=0.136"]
+vision = ["mediapipe>=0.10"]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+projected-ui = "projected_ai_interface.cli:main"
+projected-camera = "projected_ai_interface.camera_cli:main"
+projected-discovery = "projected_ai_interface.discovery_cli:main"
+projected-vision = "projected_ai_interface.vision_cli:main"
+projected-calibration = "projected_ai_interface.calibration_cli:main"
+projected-interaction = "projected_ai_interface.interaction_cli:main"
+projected-skills = "projected_ai_interface.skills_cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,9 @@
+{
+  "name": "projected-ai-camera",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {"dev":"vite --host 0.0.0.0","build":"tsc --noEmit && vite build","cap:sync":"npm run build && cap sync android","cap:add:android":"cap add android"},
+  "dependencies": {"@capacitor/core":"^7.4.3","react":"^19.1.1","react-dom":"^19.1.1","react-native":"^0.81.4","react-native-web":"^0.20.0"},
+  "devDependencies": {"@capacitor/android":"^7.4.3","@capacitor/cli":"^7.4.3","@types/react":"^19.1.13","@types/react-dom":"^19.1.9","@vitejs/plugin-react":"^5.0.4","typescript":"^5.9.2","vite":"^7.1.7"}
+}

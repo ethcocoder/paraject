@@ -1,0 +1,22 @@
+# Move File
+
+## Name
+move_file
+
+## Purpose
+Move one file inside permitted filesystem roots.
+
+## Preconditions
+The source exists as a file and the destination does not exist.
+
+## Inputs
+`source`: existing file; `destination`: new path.
+
+## Output
+A structured move result.
+
+## Safety
+Both paths are sandbox-checked and existing destinations are never overwritten.
+
+## Tool
+move_file

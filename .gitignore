@@ -21,3 +21,5 @@ packaging/build/
 desktop-electron/node_modules/
 desktop-electron/dist/
 desktop-electron/release/
+desktop-electron/build/
+desktop-electron/backend.spec

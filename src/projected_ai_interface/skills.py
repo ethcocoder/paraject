@@ -1,7 +1,10 @@
 """Documented skills and allowlisted tool dispatch."""
 from __future__ import annotations
 
+import inspect
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -24,6 +27,16 @@ class ToolResult:
     ok: bool
     result: Any = None
     error: str | None = None
+    code: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolExecution:
+    name: str
+    arguments: dict[str, Any]
+    ok: bool
+    error: str | None
+    elapsed_ms: float
 
 
 class SkillFormatError(ValueError):
@@ -69,10 +82,14 @@ class SkillRegistry:
 
 
 class ToolRegistry:
-    """Explicit allowlist: only registered Python callables can be dispatched."""
+    """Explicit allowlist for Python callables with bounded execution."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, default_timeout_seconds: float | None = 30.0) -> None:
+        if default_timeout_seconds is not None and default_timeout_seconds <= 0:
+            raise ValueError("default_timeout_seconds must be positive or None")
         self._tools: dict[str, Callable[..., Any]] = {}
+        self.default_timeout_seconds = default_timeout_seconds
+        self.execution_log: list[ToolExecution] = []
 
     def register(self, name: str, function: Callable[..., Any]) -> None:
         if not name or not callable(function):
@@ -82,13 +99,40 @@ class ToolRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._tools))
 
-    def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
-        function = self._tools.get(name)
-        if function is None:
-            return ToolResult(False, error=f"tool not allowlisted: {name}")
+    def call(self, name: str, arguments: dict[str, Any], *, timeout_seconds: float | None = None) -> ToolResult:
+        started = time.perf_counter()
+        if name not in self._tools:
+            return self._record(name, arguments, ToolResult(False, error=f"tool not allowlisted: {name}", code="unregistered_tool"), started)
         if not isinstance(arguments, dict):
-            return ToolResult(False, error="tool arguments must be an object")
+            return self._record(name, {}, ToolResult(False, error="tool arguments must be an object", code="malformed_arguments"), started)
+        timeout = self.default_timeout_seconds if timeout_seconds is None else timeout_seconds
+        if timeout is not None and timeout <= 0:
+            return self._record(name, arguments, ToolResult(False, error="timeout must be positive or None", code="invalid_timeout"), started)
+        function = self._tools[name]
         try:
-            return ToolResult(True, result=function(**arguments))
-        except (TypeError, ValueError, FileNotFoundError, PermissionError) as exc:
-            return ToolResult(False, error=str(exc))
+            signature = inspect.signature(function)
+            signature.bind(**arguments)
+        except (TypeError, ValueError) as exc:
+            return self._record(name, arguments, ToolResult(False, error=f"malformed arguments: {exc}", code="malformed_arguments"), started)
+        try:
+            if timeout is None:
+                value = function(**arguments)
+            else:
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(function, **arguments)
+                try:
+                    value = future.result(timeout=timeout)
+                finally:
+                    # A Python thread cannot be forcefully stopped, but the
+                    # caller must not block on a timed-out tool. The worker is
+                    # discarded and its result is never exposed.
+                    executor.shutdown(wait=False, cancel_futures=True)
+            return self._record(name, arguments, ToolResult(True, result=value), started)
+        except FutureTimeoutError:
+            return self._record(name, arguments, ToolResult(False, error=f"tool timed out after {timeout:g}s", code="timeout"), started)
+        except (TypeError, ValueError, FileNotFoundError, PermissionError, OSError) as exc:
+            return self._record(name, arguments, ToolResult(False, error=str(exc), code=type(exc).__name__), started)
+
+    def _record(self, name: str, arguments: dict[str, Any], result: ToolResult, started: float) -> ToolResult:
+        self.execution_log.append(ToolExecution(name, dict(arguments), result.ok, result.error, (time.perf_counter() - started) * 1000))
+        return result

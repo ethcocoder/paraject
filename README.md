@@ -316,6 +316,10 @@ Phase 7 adds the documented skill system. Each capability is defined by a `skill
 
 Phase 8 adds the local-agent contract in `src/projected_ai_interface/agent.py`. The default adapter targets an OpenAI-compatible local endpoint such as Ollama at `http://127.0.0.1:11434/v1` with a TinyLlama-class model. It loads `SKILL.md` context, receives structured interaction events, validates only documented and registered tools, retries malformed responses, and records inference latency. Run `projected-agent` to inspect the generated skill/tool contract. A model is never required for the deterministic test suite.
 
+The local provider can be configured without code changes through `PROJECTED_AGENT_BASE_URL`, `PROJECTED_AGENT_MODEL`, `PROJECTED_AGENT_API_KEY`, `PROJECTED_AGENT_TIMEOUT`, and `PROJECTED_AGENT_RETRIES`, or with the corresponding `projected-agent --base-url`, `--model`, `--timeout`, and `--retries` options. Provider failures and malformed responses are returned as structured status values; the runtime never sends camera frames to the model.
+
+Phase 9 adds a bounded `ToolRegistry` execution layer. Only registered Python callables are dispatchable, tool arguments are signature-checked, execution can be timed out, and every call is recorded with its result and elapsed time. Filesystem tools continue to resolve paths inside an explicit sandbox, reject overwrites, and require `confirmed=true` for deletion. Arbitrary model-generated shell text is not accepted.
+
 ## Team
 
 **Ethco Coder & Natnael Ermiyas**

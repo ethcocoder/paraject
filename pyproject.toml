@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "projected-ai-interface"
 version = "0.1.0"
-description = "Phase 1 projected UI and Phase 2 camera prototype"
+description = "Local projected AI interface with safe structured tool execution"
 requires-python = ">=3.10"
 dependencies = []
 

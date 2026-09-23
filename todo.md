@@ -101,7 +101,7 @@
 ## Phase 8 — LLM
 
 - [x] Select initial existing small LLM: OpenAI-compatible TinyLlama-class endpoint.
-- [ ] Run model locally.
+- [!] Run model locally (live endpoint unavailable in this environment; fake-provider coverage retained).
 - [x] Define system prompt.
 - [x] Define structured tool-call format.
 - [x] Feed structured interaction events to model.
@@ -110,19 +110,19 @@
 - [x] Add retry behavior.
 - [x] Measure inference latency.
 - [x] Test model with simple commands.
-- [ ] Test model with ambiguous commands.
+- [x] Test model with ambiguous commands.
 
 ## Phase 9 — Tool Safety
 
-- [ ] Build tool validation layer.
-- [ ] Allowlist tools.
-- [ ] Validate filesystem paths.
-- [ ] Prevent path traversal.
-- [ ] Separate read and write permissions.
-- [ ] Add confirmation for delete.
-- [ ] Add execution timeout.
-- [ ] Log tool execution.
-- [ ] Never directly execute arbitrary LLM shell text.
+- [x] Build tool validation layer.
+- [x] Allowlist tools.
+- [x] Validate filesystem paths.
+- [x] Prevent path traversal.
+- [x] Separate read and write permissions.
+- [x] Add confirmation for delete.
+- [x] Add execution timeout.
+- [x] Log tool execution.
+- [x] Never directly execute arbitrary LLM shell text.
 
 ## Phase 10 — Integration
 

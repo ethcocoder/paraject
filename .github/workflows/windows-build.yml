@@ -1,0 +1,79 @@
+name: Build Windows Desktop Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_url:
+        description: 'Pinned SmolLM ONNX model URL used only during packaging'
+        required: false
+        default: 'https://huggingface.co/onnx-community/SmolLM-135M-Instruct-ONNX/resolve/main/onnx/model_q4.onnx'
+      tokenizer_url:
+        description: 'Pinned tokenizer URL used only during packaging'
+        required: false
+        default: 'https://huggingface.co/onnx-community/SmolLM-135M-Instruct-ONNX/resolve/main/tokenizer.json'
+  push:
+    tags: ['desktop-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop-electron/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore bundled model artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .models/smollm-135m | Out-Null
+          $modelUrl = '${{ inputs.model_url }}'
+          $tokenizerUrl = '${{ inputs.tokenizer_url }}'
+          if ([string]::IsNullOrWhiteSpace($modelUrl)) { $modelUrl = 'https://huggingface.co/onnx-community/SmolLM-135M-Instruct-ONNX/resolve/main/onnx/model_q4.onnx' }
+          if ([string]::IsNullOrWhiteSpace($tokenizerUrl)) { $tokenizerUrl = 'https://huggingface.co/onnx-community/SmolLM-135M-Instruct-ONNX/resolve/main/tokenizer.json' }
+          Invoke-WebRequest -Uri $modelUrl -OutFile .models/smollm-135m/model_q4.onnx
+          Invoke-WebRequest -Uri $tokenizerUrl -OutFile .models/smollm-135m/tokenizer.json
+          if ((Get-Item .models/smollm-135m/model_q4.onnx).Length -lt 1000000) { throw 'Model download is unexpectedly small.' }
+
+      - name: Install desktop dependencies
+        working-directory: desktop-electron
+        run: npm ci
+
+      - name: Build React renderer
+        working-directory: desktop-electron
+        run: npm run build:web
+
+      - name: Build native Windows backend
+        shell: pwsh
+        run: |
+          python -m venv .venv-packaging
+          .\.venv-packaging\Scripts\python.exe -m pip install --upgrade pip pyinstaller
+          Remove-Item -Recurse -Force packaging/backend-dist -ErrorAction SilentlyContinue
+          .\.venv-packaging\Scripts\pyinstaller.exe --noconfirm --clean --onedir --name backend --distpath packaging/build packaging/backend_entry.py
+          New-Item -ItemType Directory -Force packaging/backend-dist | Out-Null
+          Copy-Item -Recurse -Force packaging/build/backend/. packaging/backend-dist/
+          Get-FileHash .models/smollm-135m/model_q4.onnx, .models/smollm-135m/tokenizer.json -Algorithm SHA256 | Out-File packaging/backend-dist/MODEL_SHA256SUMS.txt
+
+      - name: Build NSIS installer
+        working-directory: desktop-electron
+        run: npm run build:web; npx electron-builder --win nsis
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: projected-ai-windows-installer
+          path: desktop-electron/dist/*.exe
+          if-no-files-found: error

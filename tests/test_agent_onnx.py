@@ -49,3 +49,17 @@ def test_causal_provider_requires_tokenizer_configuration():
 
 def test_causal_backend_is_named_provider():
     assert SmolLMCausalProvider.__name__ == "SmolLMCausalProvider"
+
+
+def test_smollm_recovery_uses_only_registered_tool_and_approved_path():
+    text = "The task is to return an intent to open the folder."
+    messages = [{"role": "user", "content": "The approved path: /safe/Documents."}]
+    tools = [{"type": "function", "function": {"name": "open_folder"}}]
+    recovered = SmolLMCausalProvider._recover_action(text, messages, tools)
+    assert recovered == '{"tool": "open_folder", "arguments": {"path": "/safe/Documents"}}'
+
+
+def test_smollm_recovery_does_not_infer_unapproved_path():
+    text = "The task is to return an intent to open the folder."
+    tools = [{"type": "function", "function": {"name": "open_folder"}}]
+    assert SmolLMCausalProvider._recover_action(text, [{"role": "user", "content": "Open it."}], tools) == text

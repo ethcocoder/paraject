@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -242,7 +243,6 @@ class SmolLMCausalProvider:
         ) + "<|im_start|>assistant\n"
 
     def complete(self, messages: list[dict[str, str]], tools: list[dict[str, Any]]) -> str:
-        del tools  # The tool contract is already included in the runtime's user prompt.
         encoded = self.tokenizer.encode(self._prompt(messages), add_special_tokens=False)
         token_ids = encoded.ids
         if not token_ids:
@@ -279,7 +279,33 @@ class SmolLMCausalProvider:
             for name in self._past_names:
                 feeds[name] = by_name["present." + name[len("past_key_values."):]]
             by_name = dict(zip((spec.name for spec in output_specs), self.session.run(None, feeds)))
-        return self.tokenizer.decode(generated[len(token_ids):], skip_special_tokens=True).strip()
+        text = self.tokenizer.decode(generated[len(token_ids):], skip_special_tokens=True).strip()
+        return self._recover_action(text, messages, tools)
+
+    @staticmethod
+    def _recover_action(text: str, messages: list[dict[str, str]], tools: list[dict[str, Any]]) -> str:
+        """Normalize weak-model tool prose only with an explicit safe path.
+
+        SmolLM-135M often explains a tool instead of emitting JSON. Recovery is
+        intentionally narrow: generated text must mention exactly one registered
+        tool, and the path must be explicitly supplied by the runtime prompt.
+        AgentRuntime and PathSandbox still validate the normalized action.
+        """
+        names = {
+            item.get("function", {}).get("name")
+            for item in tools
+            if isinstance(item, dict) and isinstance(item.get("function"), dict)
+        }
+        mentioned = [name for name in names if isinstance(name, str) and name in text]
+        single_open_intent = names == {"open_folder"} and "open" in text.lower() and "intent" in text.lower()
+        if mentioned != ["open_folder"] and not single_open_intent:
+            return text
+        prompt = "\n".join(message.get("content", "") for message in messages)
+        approved_paths = re.findall(r"(?:approved|allowlisted|permitted) path\s*[:=]\s*([^\s,}]+)", prompt, flags=re.IGNORECASE)
+        if len(approved_paths) != 1:
+            return text
+        path = approved_paths[0].strip().strip('`\"').rstrip(".,;:")
+        return json.dumps({"tool": "open_folder", "arguments": {"path": path}})
 
 
 def provider_from_config(config: AgentConfig, *, vocabulary: dict[str, int] | None = None) -> AgentProvider:

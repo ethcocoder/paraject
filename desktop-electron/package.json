@@ -39,7 +39,7 @@
       {"from": "../.models/smollm-135m", "to": "models/smollm-135m"},
       {"from": "../packaging/backend-dist", "to": "backend"}
     ],
-    "linux": {"target": ["AppImage", "deb"], "category": "Utility", "maintainer": "opensource@projected-ai.local", "desktopName": "projected-ai-desktop", "syncDesktopName": true},
+    "linux": {"target": ["AppImage", "deb"], "category": "Utility", "maintainer": "opensource@projected-ai.local"},
     "win": {"target": ["nsis"]},
     "mac": {"target": ["dmg"]}
   }

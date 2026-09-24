@@ -23,3 +23,4 @@ desktop-electron/dist/
 desktop-electron/release/
 desktop-electron/build/
 desktop-electron/backend.spec
+windows-artifact/

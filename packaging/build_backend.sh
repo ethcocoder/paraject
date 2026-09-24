@@ -12,8 +12,9 @@ if [[ ! -s "${MODEL_DIR}/model_q4.onnx" || ! -s "${MODEL_DIR}/tokenizer.json" ]]
 fi
 python3 -m venv "${VENV}"
 "${VENV}/bin/python" -m pip install --upgrade pip pyinstaller
+"${VENV}/bin/python" -m pip install -e "${ROOT}[camera,discovery,network,onnx,vision]"
 rm -rf "${DIST}" "${PYI_DIST}"
-"${VENV}/bin/pyinstaller" --noconfirm --clean --onedir --name backend "${ROOT}/packaging/backend_entry.py"
+"${VENV}/bin/pyinstaller" --noconfirm --clean --onedir --name backend --paths "${ROOT}/src" "${ROOT}/packaging/backend_entry.py"
 mkdir -p "${DIST}"
 cp -a "${PYI_DIST}/." "${DIST}/"
 sha256sum "${MODEL_DIR}/model_q4.onnx" "${MODEL_DIR}/tokenizer.json" > "${DIST}/MODEL_SHA256SUMS.txt"

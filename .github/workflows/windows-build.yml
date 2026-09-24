@@ -61,8 +61,9 @@ jobs:
         run: |
           python -m venv .venv-packaging
           .\.venv-packaging\Scripts\python.exe -m pip install --upgrade pip pyinstaller
+          .\.venv-packaging\Scripts\python.exe -m pip install -e ".[camera,discovery,network,onnx,vision]"
           Remove-Item -Recurse -Force packaging/backend-dist -ErrorAction SilentlyContinue
-          .\.venv-packaging\Scripts\pyinstaller.exe --noconfirm --clean --onedir --name backend --distpath packaging/build packaging/backend_entry.py
+          .\.venv-packaging\Scripts\pyinstaller.exe --noconfirm --clean --onedir --name backend --paths src --distpath packaging/build packaging/backend_entry.py
           New-Item -ItemType Directory -Force packaging/backend-dist | Out-Null
           Copy-Item -Recurse -Force packaging/build/backend/. packaging/backend-dist/
           Get-FileHash .models/smollm-135m/model_q4.onnx, .models/smollm-135m/tokenizer.json -Algorithm SHA256 | Out-File packaging/backend-dist/MODEL_SHA256SUMS.txt

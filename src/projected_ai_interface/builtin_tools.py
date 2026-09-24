@@ -39,13 +39,20 @@ def create_folder(path: str, sandbox: PathSandbox) -> dict:
     return {"created": True, "path": str(folder)}
 
 
-def open_folder(path: str, sandbox: PathSandbox) -> dict:
+def open_folder(path: str, sandbox: PathSandbox, launch: bool = False) -> dict:
     folder = sandbox.resolve(path)
     if not folder.is_dir():
         raise NotADirectoryError(path)
-    # The tool returns a validated intent. OS-specific launching belongs to a
-    # later desktop adapter and is never generated from model shell text.
-    return {"validated": True, "path": str(folder), "action": "open_folder"}
+    launched = False
+    if launch:
+        if os.name == "nt":
+            os.startfile(str(folder))  # type: ignore[attr-defined]
+        elif os.sys.platform == "darwin":
+            subprocess.Popen(["open", str(folder)], start_new_session=True)
+        else:
+            subprocess.Popen(["xdg-open", str(folder)], start_new_session=True)
+        launched = True
+    return {"validated": True, "path": str(folder), "action": "open_folder", "launched": launched}
 
 
 def search_files(path: str, query: str, sandbox: PathSandbox) -> dict:

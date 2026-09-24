@@ -4,7 +4,9 @@
 
 The v2 release uses two model stages. The camera/vision stage produces a structured event such as `{ "clicked": true, "target_label": "Documents", "confidence": 0.94 }`. The local SmolLM-135M stage receives that event and the documented skills, then selects a safe action. `AgentRuntime`, `ToolRegistry`, and `PathSandbox` remain the final authority for execution.
 
-The Electron desktop package contains the React UI, a bundled Python backend executable, and the pinned SmolLM ONNX model plus tokenizer. The mobile application contains only camera capture and local-network discovery; it does not download or run the model.
+The Electron desktop package contains the React UI, a bundled Python backend executable, and the pinned SmolLM ONNX model plus tokenizer. The backend now owns the live WebSocket receiver on port `8765`, advertises `_projected-ai._tcp.local.`, decodes mobile JPEG frames, invokes the configured vision provider, passes the structured event through SmolLM and `AgentRuntime`, and executes only sandboxed tools. The mobile application contains only camera capture and local-network discovery; it does not download or run the model.
+
+For live vision inference, configure `OPENAI_API_KEY` and, when needed, `OPENAI_BASE_URL` in the desktop process environment. The vision model is accessed remotely; the SmolLM action model is bundled locally. If no vision key is configured, the backend still exposes health status but intentionally does not advertise an active camera-processing session.
 
 ## Build the desktop installer
 
@@ -26,6 +28,14 @@ npm run dist
 ```
 
 `npm run dist` creates the Python backend in a packaging virtual environment, verifies that model assets exist, and passes them to electron-builder as extra resources. There is no model download step in the installed app. The installer outputs are written under `desktop-electron/release/`.
+
+The live desktop flow is verified with:
+
+```bash
+PYTHONPATH=src python3 scripts/test_live_mobile_to_tool_e2e.py
+```
+
+That test sends the generated JPEG through the same binary WebSocket protocol used by the mobile client and verifies the final sandboxed `open_folder` result.
 
 ## Mobile build
 
